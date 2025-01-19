@@ -1,5 +1,7 @@
 import requests
 import base64
+import http
+import json
 from pydub import AudioSegment
 
 def download_audio(url, output_file):
@@ -60,23 +62,43 @@ def convert_mp3_to_base64(input_path: str) -> str:
         print(f"An error occurred: {e}")
         return ""
 
-# download_audio(item, "../testing/output_audio.mp3")
-# trim_audio("../testing/output_audio.mp3", "../testing/trimmed_audio.mp3")
-# convert_to_mono("../testing/trimmed_audio.mp3","../testing/mono_audio.raw")
-# base64_string = convert_mp3_to_base64("../testing/mono_audio.raw")
-# with open("../testing/b64.txt", "w") as file: # remove after completing 
-#     file.write(base64_string) # remove after completing
-# conn = http.client.HTTPSConnection(API_HOST)
-# payload = ""
-# headers = {
-#     'x-rapidapi-key': API_KEY,
-#     'x-rapidapi-host': API_HOST,
-#     'Content-Type': TYPE
-# }
+def fetch_song(base64_string):
+    conn = http.client.HTTPSConnection("API_HOST")
+    headers = {
+        'x-rapidapi-key': "API_KEY",
+        'x-rapidapi-host': "API_HOST",
+        'Content-Type': "TYPE"
+    }
 
-# conn.request("POST", "/songs/v2/detect?timezone=America%2FChicago&locale=en-US", base64_string, headers)
+    conn.request("POST", "/songs/v2/detect", base64_string, headers)
 
-# res = conn.getresponse()
-# data = res.read()
+    res = conn.getresponse()
+    data = res.read()
+    parsed_data = json.loads(data.decode('utf-8'))
+    title = parsed_data.get('track', {}).get('title', 'Title not found')
 
-# print(data.decode("utf-8"))
+    print(title)
+
+def lambda_handler(event, context):
+    print("Received Event:", event)
+    message = json.loads(event['Records'][0]['body'])
+    id = message['id']
+    item = message['link']
+
+    download_audio(item, f'''../testing/{id}_output.mp3''')
+    
+    trim_audio(f'''../testing/{id}_output.mp3''', f'''../testing/{id}_trimmed.mp3''')
+    
+    convert_to_mono(f'''../testing/{id}_trimmed.mp3''',f'''../testing/{id}_mono.raw''')
+    
+    base64_string = convert_mp3_to_base64(f'''../testing/{id}_mono.raw''')
+    
+    with open("../testing/b64.txt", "w") as file: # remove after completing 
+        file.write(base64_string) # remove after completing
+
+    
+    song_name = fetch_song(base64_string)
+    return {
+        'statusCode': 200,
+        'body': json.dumps('Success')
+    }
