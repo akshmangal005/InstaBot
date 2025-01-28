@@ -1,0 +1,35 @@
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+  build:
+    commands:
+      - echo "======================= Start Deployment ====================="
+      # Step 1: Create a directory to store deployment artifacts
+      - mkdir -p lambda-deploy-zip
+      - cd instabot-sqs-lambda
+
+      # Step 2: Install Python dependencies into the 'package' directory
+      - echo "Installing Python dependencies..."
+      - mkdir -p package
+      - pip3 install --target ./package -r requirements.txt
+
+      # Step 3: Package dependencies and Lambda function code into a ZIP file
+      - cd package
+      - zip -r ../instabot-sqs-lambda.zip .  # Add dependencies to the ZIP
+      - cd ..
+      - zip -g instabot-sqs-lambda.zip lambda_function.py  # Add the Lambda function code to the ZIP
+      - mv instabot-sqs-lambda.zip ../lambda-deploy-zip/  # Move the ZIP file to lambda-deploy-zip
+      - cd ..
+
+      # Step 4: Upload ZIP file to the S3 bucket
+      - echo "======================= Copying to S3 ========================"
+      - aws s3 cp lambda-deploy-zip/ s3://cloud-song-bucket/ --recursive --sse AES256
+
+      # Step 5: Update the Lambda function code
+      - echo "======================= Updating Lambda Code ================="
+      - aws lambda update-function-code --function-name instabot-sqs-lambda --zip-file fileb://lambda-deploy-zip/instabot-sqs-lambda.zip
+artifacts:
+  files:
+    - lambda-deploy-zip/instabot-sqs-lambda.zip
