@@ -11,46 +11,8 @@ load_dotenv()
 
 sender_email = os.getenv('SENDER_EMAIL')
 sender_password = os.getenv('SENDER_PASSWORD')
-receiver_email = os.getenv('RECEIVER_EMAIL')
 
-# List of songs
-songs = []
-
-def read_urls_row_by_row(filepath):
-    try:
-        # Check if file exists
-        if not os.path.exists(filepath):
-            print(f"Error: File '{filepath}' not found!")
-            return
-
-        # Read the Excel file
-        df = pd.read_excel(filepath)
-
-        # Debugging: Print column names to check if 'URL List' exists
-        print("Columns in Excel:", df.columns.tolist())
-
-        # Check if 'URL List' column exists
-        if "gaana" not in df.columns:
-            print("Error: 'URL List' column not found! Check the column name in Excel.")
-            return
-
-        # Loop through each row one by one
-        for index, row in df.iterrows():
-            song_name = row["gaana"]  # Extract URL from current row
-            if(song_name == "Title not found"):
-                continue
-            youtube_url = f"https://www.youtube.com/results?search_query={song_name}"
-            youtube_music_url = f"https://music.youtube.com/search?q={song_name}"
-            songs.append((song_name, youtube_url,youtube_music_url))
-
-
-        send_and_create_email()
-    except FileNotFoundError:
-        print(f"Error: File '{filepath}' not found!")
-    except Exception as e:
-        print(f"An error occurred: {e}")
-
-def send_and_create_email():
+def send_and_create_email(songs,receiver_email):
 
     email_body = """\
 <html>
@@ -98,7 +60,6 @@ def send_and_create_email():
 
     # Ensure HTML content type is properly set
     msg.attach(MIMEText(email_body, "html"))
-
     # Connect to Gmail SMTP server and send email
     try:
         server = smtplib.SMTP("smtp.gmail.com", 587)
@@ -109,8 +70,3 @@ def send_and_create_email():
         print("Email sent successfully!")
     except Exception as e:
         print(f"Error: {e}")
-
-
-file_path = r"C:\Users\Akash\OneDrive\Desktop\InstaBot\instabot_search_engine\songs.xlsx"
-
-read_urls_row_by_row(file_path)
