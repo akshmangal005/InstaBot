@@ -4,14 +4,19 @@ import json
 import http.client
 import os
 from pydub import AudioSegment
+from dotenv import load_dotenv
 
-
-api_host = os.environ['API_HOST']
-api_key = os.environ['API_KEY']
-content_type = os.environ['TYPE']
+load_dotenv()
+api_host = os.getenv('API_HOST')
+api_key = os.getenv('API_KEY')
+content_type = os.getenv('TYPE')
 
 def download_audio(url, output_file):
     try:
+        output_dir = os.path.dirname(output_file)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
         response = requests.get(url, stream=True)
         response.raise_for_status()  
 
@@ -20,36 +25,48 @@ def download_audio(url, output_file):
                 if chunk:
                     file.write(chunk)
 
-        print(f"Audio downloaded and saved as {output_file}")
+        # print(f"Audio downloaded and saved as {output_file}")
 
     except requests.exceptions.RequestException as e:
         print(f"Failed to download the audio: {e}")
 
 def trim_audio(input_file, output_file, duration=5):
     try:
+        output_dir = os.path.dirname(output_file)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
         audio = AudioSegment.from_file(input_file)
         trimmed_audio = audio[:duration * 1000] 
         trimmed_audio.export(output_file, format="mp3")
 
-        print(f"Audio trimmed to {duration} seconds and saved as {output_file}")
+        # print(f"Audio trimmed to {duration} seconds and saved as {output_file}")
 
     except Exception as e:
         print(f"Error trimming audio: {e}")
 
 def convert_to_mono(input_file, output_file):
     try:
+        output_dir = os.path.dirname(output_file)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        
         audio = AudioSegment.from_file(input_file)
         mono_audio = audio.set_channels(1)
         mono_audio.export(output_file, format="raw")
 
-        print(f"Mono audio saved as {output_file}")
+        # print(f"Mono audio saved as {output_file}")
 
     except Exception as e:
         print(f"Error converting to mono: {e}")
 
-def convert_mp3_to_base64(input_file):
+def convert_mp3_to_base64(output_file):
     try:
-        with open(input_file, "rb") as file:
+        output_dir = os.path.dirname(output_file)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
+        with open(output_file, "rb") as file:
             binary_data = file.read()
         return base64.b64encode(binary_data).decode("utf-8")
 
@@ -72,21 +89,11 @@ def fetch_song(base64_string):
     parsed_data = json.loads(data.decode('utf-8'))
     return parsed_data.get('track', {}).get('title', 'Title not found')
 
-def lambda_handler(event, context):
-    print("Received Event:", event)
-
-    message = json.loads(event['Records'][0]['body'])
-    url_list = message['url_list']
-
-    id = url_list['id']
-    audio_url = url_list['url']
-
-    original_file = f"/tmp/{id}_original.mp3"
-    trimmed_file = f"/tmp/{id}_trimmed.mp3"
-    mono_file = f"/tmp/{id}_mono.raw"
-
+def search_song(id, audio_url):
+    original_file = f"../../testing/tmp/{id}_original.mp3"
+    trimmed_file = f"../../testing/tmp/{id}_trimmed.mp3"
+    mono_file = f"../../testing/tmp/{id}_mono.raw"
     download_audio(audio_url, original_file)
-
     trim_audio(original_file, trimmed_file)
 
     convert_to_mono(trimmed_file, mono_file)
@@ -94,9 +101,5 @@ def lambda_handler(event, context):
     base64_string = convert_mp3_to_base64(mono_file)
 
     song_name = fetch_song(base64_string)
-    print(f"Detected Song: {song_name}")
+    return song_name
 
-    return {
-        'statusCode': 200,
-        'body': json.dumps({'Detected Song': song_name})
-    }
