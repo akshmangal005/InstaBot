@@ -35,6 +35,7 @@ def check_messages():
                     if hasattr(item, 'clip') and hasattr(item.clip, 'video_url'):
                         url_list.append(item.clip.video_url)
                 cl.direct_thread_hide(thread_id)  # Deletes the entire chat
+                return url_list
             else:
                 print("Message field not found in thread.")
         else:

@@ -4,8 +4,6 @@ import os
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
-from instabot_sqs_lambda import *
-from instabot_search_engine import *
 
 load_dotenv()
 
@@ -13,7 +11,6 @@ sender_email = os.getenv('SENDER_EMAIL')
 sender_password = os.getenv('SENDER_PASSWORD')
 
 def send_and_create_email(songs,receiver_email):
-    print("chal ja bhai")
     email_body = """\
 <html>
 <head>
