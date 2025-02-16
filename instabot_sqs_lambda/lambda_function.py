@@ -27,7 +27,7 @@ def check_messages():
 
         if threads:
             my_chat = threads[0]
-            print(my_chat)
+            # print(my_chat)
             thread_id = my_chat.id
 
             if hasattr(my_chat, 'messages'):
