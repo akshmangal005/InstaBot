@@ -13,7 +13,7 @@ sender_email = os.getenv('SENDER_EMAIL')
 sender_password = os.getenv('SENDER_PASSWORD')
 
 def send_and_create_email(songs,receiver_email):
-
+    print("chal ja bhai")
     email_body = """\
 <html>
 <head>
