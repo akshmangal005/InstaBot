@@ -17,7 +17,7 @@ def check_messages():
         raise ValueError("Username and password must be set in environment variables.")
     
     print("Attempting Instagram login...")
-    settings_file_path = '../tmp/dump.json'
+    settings_file_path = '/tmp/dump.json'
     try:
         if os.path.exists(settings_file_path):
             print("sessionID exists.")
@@ -51,7 +51,10 @@ def check_messages():
                 return url_list
             else:
                 print("Message field not found in thread.")
+                raise Exception
         else:
             print("No new messages.")
+            raise Exception
     except Exception as e:
         print(f"Error occurred while checking new messages: {e}")
+        return []
