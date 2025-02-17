@@ -30,7 +30,6 @@ def check_messages():
     except:
         print("Logging in using username and password")
         cl = Client()
-        print(instagram_username)
         cl.login(instagram_username, instagram_password)
         cl.dump_settings(settings_file_path)
         print("Login Successful")

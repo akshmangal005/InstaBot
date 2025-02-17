@@ -24,6 +24,6 @@ def main():
 
         send_and_create_email(songs,receiver_email)
     else:
-        print("No new messages")
+        print("Mail Not Send Due to no new messages")
 
 main()
