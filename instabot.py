@@ -23,6 +23,7 @@ def main():
             songs.append((song_name, youtube_url,youtube_music_url))
 
         send_and_create_email(songs,receiver_email)
-
+    else:
+        print("No new messages")
 
 main()
