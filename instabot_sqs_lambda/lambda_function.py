@@ -17,9 +17,22 @@ def check_messages():
         raise ValueError("Username and password must be set in environment variables.")
     
     print("Attempting Instagram login...")
-    cl = Client()
-    cl.login(instagram_username, instagram_password)
-    print("Login Successful")
+    settings_file_path = '../tmp/dump.json'
+    try:
+        if os.path.exists(settings_file_path):
+            print("sessionID exists.")
+            cl = Client()
+            cl.load_settings(settings_file_path)
+            print("Login Successful")
+        else:
+            print("sessionID does not exist.")
+            raise Exception
+    except:
+        print("Logging in using username and password")
+        cl = Client()
+        cl.login(instagram_username, instagram_password)
+        cl.dump_settings(settings_file_path)
+        print("Login Successful")
 
     try:
         print("Checking new messages...")
