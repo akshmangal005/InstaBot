@@ -28,7 +28,7 @@ def check_messages():
             print("sessionID does not exist.")
             raise Exception
     except:
-        print("sessionID does not exist. Logging in using username and password")
+        print("Logging in using username and password")
         cl = Client()
         cl.login(instagram_username, instagram_password)
         cl.dump_settings(settings_file_path)
