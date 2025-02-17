@@ -51,10 +51,10 @@ def check_messages():
                 return url_list
             else:
                 print("Message field not found in thread.")
-                raise Exception
+                return []
         else:
             print("No new messages.")
-            raise Exception
+            return []
     except Exception as e:
         print(f"Error occurred while checking new messages: {e}")
         return []
