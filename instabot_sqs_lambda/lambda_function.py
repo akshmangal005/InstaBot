@@ -25,6 +25,7 @@ def check_messages():
             cl.load_settings(settings_file_path)
             print("Login Successful")
         else:
+            print("sessionID does not exist.")
             raise Exception
     except:
         print("sessionID does not exist. Logging in using username and password")
