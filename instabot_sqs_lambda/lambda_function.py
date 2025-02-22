@@ -65,4 +65,3 @@ def check_messages():
         print(f"Error occurred while checking new messages: {e}")
         return []
     
-check_messages()
