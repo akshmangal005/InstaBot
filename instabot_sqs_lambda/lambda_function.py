@@ -15,7 +15,7 @@ url_list = []
 cl = Client()
 def writing():
     subprocess.Popen('echo "Geeks 4 Geeks" > session.txt ', shell=True)
-    subprocess.Popen('ls', shell=True)
+    subprocess.Popen('pwd', shell=True)
     # result = subprocess.run(['pwd'], capture_output=True, text=True, check_returncode=True)
     # print(result.stdout.strip())    
 
