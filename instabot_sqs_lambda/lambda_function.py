@@ -14,8 +14,10 @@ url_list = []
 
 cl = Client()
 def writing():
-    subprocess.Popen('echo "Geeks 4 Geeks" > session.txt', shell=True)
-
+    subprocess.Popen('echo "Geeks 4 Geeks" > session.txt ', shell=True)
+    subprocess.Popen('ls', shell=True)
+    # result = subprocess.run(['pwd'], capture_output=True, text=True, check_returncode=True)
+    # print(result.stdout.strip())    
 
 def check_messages():
     global url_list
@@ -30,7 +32,7 @@ def check_messages():
             
             with open(filename, "r") as file:
                 session_id = file.read()
-            print("printint session id", session_id)
+            print("printing session id", session_id)
             cl.login_by_sessionid(session_id)
             print("Login Successful")
         else:
@@ -71,4 +73,5 @@ def check_messages():
     except Exception as e:
         print(f"Error occurred while checking new messages: {e}")
         return []
-    
+
+check_messages()
