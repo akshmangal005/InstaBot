@@ -11,32 +11,34 @@ instagram_password = os.getenv('PASSWORD')
 
 url_list = []
 
+cl = Client()
+
 def check_messages():
     global url_list
     if not instagram_username or not instagram_password:
         raise ValueError("Username and password must be set in environment variables.")
     
     print("Attempting Instagram login...")
-    # settings_file_path = 'tmp/dump.json'
-    cl = Client()
-    cl.login(instagram_username, instagram_password)
-    print("Login Successful")
-    # try:
-    #     if os.path.exists(settings_file_path):
-    #         print("sessionID exists.")
-    #         cl = Client()
-    #         cl.load_settings(settings_file_path)
-    #         print("Login Successful")
-    #     else:
-    #         print("sessionID does not exist.")
-    #         raise Exception
-    # except:
-    #     print("Logging in using username and password")
-    #     cl = Client()
-    #     cl.login(instagram_username, instagram_password)
-    #     cl.dump_settings(settings_file_path)
-    #     print("Login Successful")
+    filename = "sessionidfile.txt"
+    try:
+        if os.path.exists(filename):
+            print("sessionID exists.")
+            
+            with open(filename, "r") as file:
+                session_id = file.read()
 
+            cl.login_by_sessionid(session_id)
+            print("Login Successful")
+        else:
+            print("sessionID does not exist.")
+            raise Exception
+    except:
+        print("Logging in using username and password")
+        data = cl.get_settings()
+        session_id = data["authorization_data"]['sessionid']
+        with open(filename, "w") as file:
+            file.write(session_id)
+        print("Login Successful")    
     try:
         print("Checking new messages...")
         threads = cl.direct_threads(20, "unread")
