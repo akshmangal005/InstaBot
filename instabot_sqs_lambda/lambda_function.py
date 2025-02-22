@@ -19,7 +19,7 @@ def check_messages():
         raise ValueError("Username and password must be set in environment variables.")
     
     print("Attempting Instagram login...")
-    filename = "../../testing/tmp/sessionidfile.txt"
+    filename = "../tmp/sessionidfile.txt"
     try:
         if os.path.exists(filename):
             print("sessionID exists.")
