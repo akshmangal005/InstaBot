@@ -34,8 +34,9 @@ def check_messages():
             raise Exception
     except:
         print("Logging in using username and password")
+        cl.login(instagram_username,instagram_password)
         data = cl.get_settings()
-        session_id = data["authorization_data"]['sessionid']
+        session_id = data["authorization_data"]["sessionid"]
         with open(filename, "w") as file:
             file.write(session_id)
         print("Login Successful")    
@@ -63,3 +64,5 @@ def check_messages():
     except Exception as e:
         print(f"Error occurred while checking new messages: {e}")
         return []
+    
+check_messages()
