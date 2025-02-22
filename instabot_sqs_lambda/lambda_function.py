@@ -3,6 +3,7 @@ import json
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 from instagrapi import Client
 from dotenv import load_dotenv
+import subprocess
 
 load_dotenv()
 
@@ -12,6 +13,9 @@ instagram_password = os.getenv('PASSWORD')
 url_list = []
 
 cl = Client()
+def writing():
+    subprocess.Popen('echo "Geeks 4 Geeks" > session.txt', shell=True)
+
 
 def check_messages():
     global url_list
@@ -19,14 +23,14 @@ def check_messages():
         raise ValueError("Username and password must be set in environment variables.")
     
     print("Attempting Instagram login...")
-    filename = "../tmp/sessionidfile.txt"
+    filename = "session.txt"
     try:
         if os.path.exists(filename):
             print("sessionID exists.")
             
             with open(filename, "r") as file:
                 session_id = file.read()
-
+            print("printint session id", session_id)
             cl.login_by_sessionid(session_id)
             print("Login Successful")
         else:
@@ -39,6 +43,7 @@ def check_messages():
         print(data)
         session_id = data["authorization_data"]["sessionid"]
         print(session_id)
+        writing()
         with open(filename, "w") as file:
             file.write(session_id)
         print("Login Successful")    
