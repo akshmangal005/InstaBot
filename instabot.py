@@ -7,13 +7,11 @@ from instabot_email_notifier.lambda_function import *
 load_dotenv()
 receiver_email = os.getenv('RECEIVER_EMAIL')
 
-# List of songs
-songs = []
-
 def main():
     users_Dict = check_messages()
     for key, values in users_Dict.items():
         thread_id = values[0]
+        songs = [] # List of songs
         if values:
             for i, url in enumerate(values[1:], start=1): 
                 song_name = search_song(i, url)
@@ -24,12 +22,15 @@ def main():
                 youtube_music_url = f"https://music.youtube.com/search?q={song_name}"
                 songs.append((song_name, youtube_url,youtube_music_url))
 
-            if(os.getenv('Client1') == key):
-                send_and_create_email(songs,os.getenv('Client1_email'))
-                send_messages(songs,thread_id)
+            if songs:
+                if(os.getenv('Client1') == key):
+                    send_and_create_email(songs,os.getenv('Client1_email'))
+                    send_messages(songs,thread_id)
+                else:
+                    send_messages(songs,thread_id)
             else:
-                send_messages(songs,thread_id)
+                print("No new messages to send")
         else:
-            print("No new messages to send")
+            print("No New Messages Received!")
 
 main()
