@@ -26,6 +26,7 @@ def main():
 
             if(os.getenv('Client1') == key):
                 send_and_create_email(songs,os.getenv('Client1_email'))
+                send_messages(songs,thread_id)
             elif(os.getenv('Client2') == key):
                 # send_and_create_email(songs,os.getenv('Client2_email'))
                 send_messages(songs,thread_id)
