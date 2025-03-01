@@ -3,6 +3,7 @@ import json
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 from instagrapi import Client
 from dotenv import load_dotenv
+from instabot_db.lambda_function import *
 
 load_dotenv()
 
@@ -14,20 +15,21 @@ users_Dict = {}
 
 def loginId():
     print("Attempting Instagram login...")
-    settings_file_path = 'tmp/dump.json'
     try:
-        if os.path.exists(settings_file_path):
-            print("sessionID exists.")
-            cl.load_settings(settings_file_path)
-            print("Login Successful")
-        else:
-            print("sessionID does not exist.")
+        print("Logging in using session id.")
+        session_id = get_sessionid()
+        if session_id == None:
+            print("No sessions id found.")
             raise Exception
+        cl.login_by_sessionid(session_id)
+        print("Login Successful using session id.")
     except:
         print("Logging in using username and password")
         cl.login(instagram_username, instagram_password)
-        cl.dump_settings(settings_file_path)
-        print("Login Successful")
+        session_id = cl.get_settings()
+        create_db()
+        post_sessionid(session_id['authorization_data']['sessionid'])
+        print("Login Successful using username and password")
 
 def send_messages(songs_list, thread_id):
     for song in songs_list:
