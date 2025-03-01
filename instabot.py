@@ -23,8 +23,8 @@ def main():
                 songs.append((song_name, youtube_url,youtube_music_url))
 
             if songs:
-                if(os.getenv('Client1') == key):
-                    send_and_create_email(songs,os.getenv('Client1_email'))
+                if(os.getenv('CLIENT1') == key):
+                    send_and_create_email(songs,os.getenv('CLIENT1_EMAIL'))
                     send_messages(songs,thread_id)
                 else:
                     send_messages(songs,thread_id)
