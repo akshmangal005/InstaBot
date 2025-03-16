@@ -1,6 +1,3 @@
 .venv/
 .env
-instabot_sqs_lambda/__pycache__/
-instabot_search_engine/__pycache__/
-instabot_email_notifier/__pycache__/
-instabot_db/__pycache__/
+__pycache__
