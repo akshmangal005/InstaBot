@@ -85,9 +85,8 @@ def fetch_song(base64_string):
     conn.request("POST", "/songs/v2/detect", base64_string, headers)
     res = conn.getresponse()
     data = res.read()
-    
     parsed_data = json.loads(data.decode('utf-8'))
-    return parsed_data.get('track', {}).get('title', 'Title not found')
+    return parsed_data.get('track', 'Title not found').get('share', 'Title not found').get('subject', 'Title not found')
 
 def search_song(id, audio_url):
 
@@ -103,7 +102,6 @@ def search_song(id, audio_url):
         convert_to_mono(trimmed_file, mono_file)
 
         base64_string = convert_mp3_to_base64(mono_file)
-
         song_name = fetch_song(base64_string)
         if song_name == 'Title not found':
             continue

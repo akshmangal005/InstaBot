@@ -10,41 +10,19 @@ load_dotenv()
 instagram_username = os.getenv('USERNAME')
 instagram_password = os.getenv('PASSWORD')
 
-cl = Client()
 users_Dict = {}
 
-def loginId():
-    print("Attempting Instagram login...")
-    try:
-        print("Logging in using session id.")
-        session_id = get_sessionid()
-        if session_id == None:
-            print("No sessions id found.")
-            raise Exception
-        cl.login_by_sessionid(session_id)
-        print("Login Successful using session id.")
-    except:
-        print("Logging in using username and password")
-        cl.login(instagram_username, instagram_password)
-        session_id = cl.get_settings()
-        create_db()
-        post_sessionid(session_id['authorization_data']['sessionid'])
-        print("Login Successful using username and password")
-
-def send_messages(songs_list, thread_id):
+def send_messages(songs_list, thread_id,cl):
     for song in songs_list:
         song_url = song[1].replace(" ", "_") #replacing spaces as url is getting break in message
         cl.direct_answer(thread_id, song_url)
     cl.direct_thread_hide(thread_id) # Deletes the entire chat
     print("Direct Message send successfully!")
     return
-
-def check_messages():
+def check_messages(cl):
     global users_Dict
     if not instagram_username or not instagram_password:
         raise ValueError("Username and password must be set in environment variables.")
-    
-    loginId()
 
     try:
         print("Checking new messages...")
