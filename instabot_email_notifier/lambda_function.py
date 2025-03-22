@@ -24,7 +24,7 @@ def send_and_create_email(songs,receiver_email):
 </head>
 <body>
     <p>Hello,</p>
-    <p>Given below is the list of songs you shared with Instabot.</p>
+    <p>Given below is the list of songs you shared with Track Hunter.</p>
     <table>
         <tr>
             <th>Song Name</th>
@@ -44,7 +44,7 @@ def send_and_create_email(songs,receiver_email):
 
     email_body += """
         </table>
-        <p>Best regards,<br>InstaBot</p>
+        <p>Best regards,<br>Track Hunter</p>
     </body>
     </html>
     """
@@ -53,7 +53,7 @@ def send_and_create_email(songs,receiver_email):
     msg = MIMEMultipart()
     msg["From"] = sender_email
     msg["To"] = receiver_email
-    msg["Subject"] = "List of Songs from Instabot"
+    msg["Subject"] = "List of Songs from Track Hunter"
 
     # Ensure HTML content type is properly set
     msg.attach(MIMEText(email_body, "html"))
