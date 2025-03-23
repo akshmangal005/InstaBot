@@ -86,7 +86,7 @@ def fetch_song(base64_string):
     res = conn.getresponse()
     data = res.read()
     parsed_data = json.loads(data.decode('utf-8'))
-    return parsed_data.get('track', 'Title not found').get('share', 'Title not found').get('subject', 'Title not found')
+    return parsed_data.get('track', {}).get('share', {}).get('subject', 'Title not found')
 
 def search_song(id, audio_url):
 
