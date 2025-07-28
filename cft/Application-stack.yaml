@@ -1,0 +1,550 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  CloudFormation template for InstaBot application stack with dedicated IAM roles
+  and separate Lambda Layers for each function.
+
+Parameters:
+  SecretsStackName:
+    Type: String
+    Description: The name of the stack that creates the InstaBot secrets.
+  S3BucketStackName:
+    Type: String
+    Description: The name of the stack that creates the S3 bucket for deployment.
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # DYNAMODB, SQS, and IAM ROLES
+  # ---------------------------------------------------------------------------
+  InstaBotDynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-InstaBotTable"
+      AttributeDefinitions:
+        - AttributeName: UserId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: UserId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  SessionDynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-SESSION_TABLE"
+      AttributeDefinitions:
+        - AttributeName: SessionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: SessionId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  SearchEngineQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-SearchEngineQueue"
+      VisibilityTimeout: 900
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt SearchEngineDLQ.Arn
+        maxReceiveCount: 2
+
+  SearchEngineDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-SearchEngineDLQ"
+
+  MainLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-InstaBotMainLambdaRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InstaBotMainLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - ses:SendEmail
+                  - sqs:*
+                  - dynamodb:*
+                Resource: "*"
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  Fn::ImportValue: !Sub "${SecretsStackName}-SecretARN"
+
+  EmailNotifierRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-InstaBotEmailNotifierRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InstaBotEmailNotifierPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - ses:SendEmail
+                Resource: "*"
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  Fn::ImportValue: !Sub "${SecretsStackName}-SecretARN"
+        - PolicyName: S3AccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub
+                  - 'arn:aws:s3:::${BucketName}/*'
+                  - BucketName:
+                      Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+
+  SearchEngineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-InstaBotSearchEngineRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InstaBotSearchEnginePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - dynamodb:*
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt SearchEngineQueue.Arn
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  Fn::ImportValue: !Sub "${SecretsStackName}-SecretARN"
+        - PolicyName: LambdaInvokePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: "lambda:InvokeFunction"
+                Resource: !GetAtt InstabotEmailNotifierLambda.Arn
+
+  SQSLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-InstaBotSQSLambdaRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InstaBotSQSLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - sqs:*
+                  - dynamodb:*
+                Resource: "*"
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  Fn::ImportValue: !Sub "${SecretsStackName}-SecretARN"
+        - PolicyName: S3AccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub
+                  - 'arn:aws:s3:::${BucketName}/*'
+                  - BucketName:
+                      Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+  
+  # ---------------------------------------------------------------------------
+  # DEDICATED LAMBDA LAYERS
+  # ---------------------------------------------------------------------------
+  MainLambdaLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-instabot-main-layer"
+      Description: "Dependencies for the Main Lambda."
+      Content:
+        S3Bucket:
+          Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+        S3Key: main_layer.zip
+      CompatibleRuntimes:
+        - python3.12
+
+  EmailNotifierLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-instabot-email-notifier-layer"
+      Description: "Dependencies for the Email Notifier Lambda."
+      Content:
+        S3Bucket:
+          Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+        S3Key: email_notifier_layer.zip
+      CompatibleRuntimes:
+        - python3.12
+
+  SearchEnginePyLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-instabot-search-engine-py-layer"
+      Description: "Python dependencies for the Search Engine Lambda."
+      Content:
+        S3Bucket:
+          Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+        S3Key: search_engine_py_layer.zip
+      CompatibleRuntimes:
+        - python3.12
+
+  SQSLambdaLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-instabot-sqs-layer"
+      Description: "Dependencies for the SQS Lambda."
+      Content:
+        S3Bucket:
+          Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+        S3Key: sqs_layer.zip
+      CompatibleRuntimes:
+        - python3.12
+
+  FfmpegLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-self-hosted-ffmpeg-layer"
+      Description: "Self-hosted FFmpeg binaries."
+      Content:
+        S3Bucket:
+          Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+        S3Key: ffmpeg.zip 
+      CompatibleRuntimes:
+        - python3.12
+
+  # ---------------------------------------------------------------------------
+  # LAMBDA FUNCTIONS
+  # ---------------------------------------------------------------------------
+  InstabotEmailNotifierLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-instabot_email_notifier"
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Role: !GetAtt EmailNotifierRole.Arn
+      Timeout: 900
+      Code:
+        S3Bucket:
+          Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+        S3Key: instabot_email_notifier.zip
+      Layers:
+        - !Ref EmailNotifierLayer
+      Environment:
+        Variables:
+          SECRET_NAME:
+            Fn::ImportValue: !Sub "${SecretsStackName}-SecretName"
+          DYNAMODB_TABLE: !Ref InstaBotDynamoDBTable
+          bucket_name:
+            Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+          instagram_username:
+            Fn::Sub:
+              - "{{resolve:secretsmanager:${SecretNameOrArn}:SecretString:InstagramUsername}}"
+              - SecretNameOrArn:
+                  Fn::ImportValue: !Sub "${SecretsStackName}-SecretName"
+          instagram_password:
+            Fn::Sub:
+              - "{{resolve:secretsmanager:${SecretNameOrArn}:SecretString:InstagramPassword}}"
+              - SecretNameOrArn:
+                  Fn::ImportValue: !Sub "${SecretsStackName}-SecretName"
+          sender_email:
+            Fn::Sub:
+              - "{{resolve:secretsmanager:${SecretNameOrArn}:SecretString:sender_email}}"
+              - SecretNameOrArn:
+                  Fn::ImportValue: !Sub "${SecretsStackName}-SecretName"
+          receiver_email:
+            Fn::Sub:
+              - "{{resolve:secretsmanager:${SecretNameOrArn}:SecretString:ReceiverEmail}}"
+              - SecretNameOrArn:
+                  Fn::ImportValue: !Sub "${SecretsStackName}-SecretName"
+          sender_password:
+            Fn::Sub:
+              - "{{resolve:secretsmanager:${SecretNameOrArn}:SecretString:sender_password}}"
+              - SecretNameOrArn:
+                  Fn::ImportValue: !Sub "${SecretsStackName}-SecretName"
+
+  InstabotSearchEngineLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-instabot_search_engine"
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Role: !GetAtt SearchEngineRole.Arn
+      Timeout: 900
+      Code:
+        S3Bucket:
+          Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+        S3Key: instabot_search_engine.zip
+      Layers:
+        - !Ref SearchEnginePyLayer
+        - !Ref FfmpegLayer
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref InstaBotDynamoDBTable
+          SECRET_NAME: 
+            Fn::ImportValue: !Sub "${SecretsStackName}-SecretName"
+          email_lambda_name: !Ref InstabotEmailNotifierLambda
+          api_key:
+            Fn::Sub:
+              - "{{resolve:secretsmanager:${SecretNameOrArn}:SecretString:api_key}}"
+              - SecretNameOrArn:
+                  Fn::ImportValue: !Sub "${SecretsStackName}-SecretName"
+          api_host:
+            Fn::Sub:
+              - "{{resolve:secretsmanager:${SecretNameOrArn}:SecretString:api_host}}"
+              - SecretNameOrArn:
+                  Fn::ImportValue: !Sub "${SecretsStackName}-SecretName"
+          content_type:
+            Fn::Sub:
+              - "{{resolve:secretsmanager:${SecretNameOrArn}:SecretString:content_type}}"
+              - SecretNameOrArn:
+                  Fn::ImportValue: !Sub "${SecretsStackName}-SecretName"
+  
+  InstabotSQSLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-instabot_sqs_lambda"
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Role: !GetAtt SQSLambdaRole.Arn
+      Timeout: 900
+      Code:
+        S3Bucket:
+          Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+        S3Key: instabot_sqs_lambda.zip
+      Layers:
+        - !Ref SQSLambdaLayer
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref InstaBotDynamoDBTable
+          SECRET_NAME:
+            Fn::ImportValue: !Sub "${SecretsStackName}-SecretName"
+          SQS_QUEUE_URL: !Ref SearchEngineQueue
+          session_table_name: !Ref SessionDynamoDBTable
+          Bucket_name:
+            Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+          username:
+            Fn::Sub:
+              - "{{resolve:secretsmanager:${SecretNameOrArn}:SecretString:InstagramUsername}}"
+              - SecretNameOrArn:
+                  Fn::ImportValue: !Sub "${SecretsStackName}-SecretName"
+          password:
+            Fn::Sub:
+              - "{{resolve:secretsmanager:${SecretNameOrArn}:SecretString:InstagramPassword}}"
+              - SecretNameOrArn:
+                  Fn::ImportValue: !Sub "${SecretsStackName}-SecretName"
+
+  InstabotMainLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-instabot_main"
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Role: !GetAtt MainLambdaRole.Arn
+      Timeout: 900
+      Code:
+        S3Bucket:
+          Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+        S3Key: instabot_main.zip
+      Layers:
+        - !Ref MainLambdaLayer
+      Environment:
+        Variables:
+          SECRET_NAME:
+            Fn::ImportValue: !Sub "${SecretsStackName}-SecretName"
+          DYNAMODB_TABLE: !Ref InstaBotDynamoDBTable
+
+  # ---------------------------------------------------------------------------
+  # EVENT TRIGGERS
+  # ---------------------------------------------------------------------------
+  DailyTriggerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${AWS::StackName}-DailyInstaBotTrigger"
+      Description: "Triggers the instabot_sqs_lambda daily at 5 AM UTC"
+      ScheduleExpression: "cron(0 5 * * ? *)"
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt InstabotSQSLambda.Arn
+          Id: "InstabotSQSLambdaTarget"
+
+  AllowEventBridgeToInvokeSQSLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt InstabotSQSLambda.Arn
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt DailyTriggerRule.Arn
+
+  InstabotSearchEngineEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt SearchEngineQueue.Arn
+      FunctionName: !GetAtt InstabotSearchEngineLambda.Arn
+      Enabled: true
+      BatchSize: 10
+
+  # ---------------------------------------------------------------------------
+  # API GATEWAY
+  # ---------------------------------------------------------------------------
+  InstaBotApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub "${AWS::StackName}-InstaBotApi"
+
+  InstaBotApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt InstaBotApiGateway.RootResourceId
+      PathPart: instabot
+      RestApiId: !Ref InstaBotApiGateway
+  InstaBotApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref InstaBotApiGateway
+      ResourceId: !Ref InstaBotApiResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${InstabotMainLambda.Arn}/invocations"
+
+  SearchApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt InstaBotApiGateway.RootResourceId
+      PathPart: search
+      RestApiId: !Ref InstaBotApiGateway
+  SearchApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref InstaBotApiGateway
+      ResourceId: !Ref SearchApiResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${InstabotSearchEngineLambda.Arn}/invocations"
+
+  LoginApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt InstaBotApiGateway.RootResourceId
+      PathPart: login
+      RestApiId: !Ref InstaBotApiGateway
+  LoginApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref InstaBotApiGateway
+      ResourceId: !Ref LoginApiResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${InstabotSQSLambda.Arn}/invocations"
+
+  MailApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt InstaBotApiGateway.RootResourceId
+      PathPart: mail
+      RestApiId: !Ref InstaBotApiGateway
+  MailApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref InstaBotApiGateway
+      ResourceId: !Ref MailApiResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${InstabotEmailNotifierLambda.Arn}/invocations"
+
+  InstaBotApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref InstaBotApiGateway
+      StageName: prod
+    DependsOn:
+      - InstaBotApiMethod
+      - SearchApiMethod
+      - LoginApiMethod
+      - MailApiMethod
+
+Outputs:
+  BaseApiUrl:
+    Description: The base URL of the API Gateway
+    Value: !Sub "https://${InstaBotApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  InstabotEndpoint:
+    Description: Endpoint for the main InstaBot function
+    Value: !Sub "https://${InstaBotApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/instabot"
+  SearchEndpoint:
+    Description: Endpoint for the search engine function
+    Value: !Sub "https://s{InstaBotApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/search"
+  LoginEndpoint:
+    Description: Endpoint for the login (SQS) function
+    Value: !Sub "https://${InstaBotApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/login"
+  MailEndpoint:
+    Description: Endpoint for the email notifier function
+    Value: !Sub "https://${InstaBotApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/mail"
+  S3BucketName:
+    Description: Name of the S3 bucket for Lambda code
+    Value:
+      Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
