@@ -7,7 +7,10 @@ import boto3
 from botocore.exceptions import ClientError
 from datetime import datetime
 from instagrapi import Client
+from instagrapi.exceptions import ClientError as InstagrapiClientError
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
+import random
+import time
 
 S3_BUCKET_NAME = os.getenv("bucket_name")
 SESSION_FILE_KEY = "instagram_session.json" 
@@ -90,13 +93,73 @@ def login_with_s3_session() -> Client:
 
     return cl
 
+def retry_with_exponential_backoff(func, max_retries=5, base_delay=1, max_delay=60):
+    """
+    Retry a function with exponential backoff.
+    
+    Args:
+        func: Function to retry
+        max_retries: Maximum number of retry attempts
+        base_delay: Base delay in seconds
+        max_delay: Maximum delay in seconds
+    
+    Returns:
+        Result of the function call
+    """
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except (InstagrapiClientError, ConnectionError, Exception) as e:
+            error_msg = str(e).lower()
+            
+            # Check if it's a rate limit or server error that we should retry
+            if any(keyword in error_msg for keyword in ['500', 'rate limit', 'too many', 'connection', 'timeout', 'server error']):
+                if attempt < max_retries - 1:
+                    # Calculate delay with exponential backoff and jitter
+                    delay = min(base_delay * (2 ** attempt) + random.uniform(0, 1), max_delay)
+                    print(f"Instagram API error (attempt {attempt + 1}/{max_retries}): {e}")
+                    print(f"Retrying in {delay:.2f} seconds...")
+                    time.sleep(delay)
+                    continue
+                else:
+                    print(f"Max retries ({max_retries}) exceeded. Last error: {e}")
+                    raise
+            else:
+                # For non-retryable errors, raise immediately
+                print(f"Non-retryable Instagram API error: {e}")
+                raise
+    
+    raise Exception(f"Function failed after {max_retries} attempts")
+
 def send_messages_to_instagram(songs_list, thread_id):
     cl = login_with_s3_session()
-    for song in songs_list:
-        song_url = song[1].replace(" ", "_") #replacing spaces as url is getting break in message
-        cl.direct_answer(thread_id, song_url)
-    cl.direct_thread_hide(thread_id) # Deletes the entire chat
-    print("Direct Message send successfully!")
+    
+    # Send each song with retry logic
+    for i, song in enumerate(songs_list):
+        song_url = song[1].replace(" ", "_")  # replacing spaces as url is getting break in message
+        
+        def _send_message():
+            return cl.direct_answer(thread_id, song_url)
+        
+        try:
+            retry_with_exponential_backoff(_send_message, max_retries=3, base_delay=1)
+            print(f"Successfully sent song {i+1}/{len(songs_list)}: {song[0]}")
+        except Exception as e:
+            print(f"Failed to send song {i+1}/{len(songs_list)} ({song[0]}): {e}")
+            # Continue with other songs even if one fails
+    
+    # Hide thread with retry logic
+    def _hide_thread():
+        return cl.direct_thread_hide(thread_id)
+    
+    try:
+        retry_with_exponential_backoff(_hide_thread, max_retries=2, base_delay=1)
+        print("Successfully hid thread")
+    except Exception as e:
+        print(f"Warning: Failed to hide thread: {e}")
+        # Don't fail the entire function if hiding fails
+    
+    print("Direct Message sending process completed!")
     return
 
 def lambda_handler(event, context):
