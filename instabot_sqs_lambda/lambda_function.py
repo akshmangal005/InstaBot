@@ -4,10 +4,12 @@ import boto3
 from botocore.exceptions import ClientError
 from datetime import datetime
 from instagrapi import Client
+from instagrapi.exceptions import ClientError as InstagrapiClientError
 import time
 import uuid
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 from pydantic import HttpUrl
+import random
 
 # --- Environment Variables ---
 instagram_username = os.getenv('username')
@@ -135,10 +137,49 @@ s3_client = boto3.client('s3',region_name=AWS_REGION)
 #         print(f"An unexpected error occurred while putting item: {e}")
 #         return False
 
+def retry_with_exponential_backoff(func, max_retries=5, base_delay=1, max_delay=60):
+    """
+    Retry a function with exponential backoff.
+    
+    Args:
+        func: Function to retry
+        max_retries: Maximum number of retry attempts
+        base_delay: Base delay in seconds
+        max_delay: Maximum delay in seconds
+    
+    Returns:
+        Result of the function call
+    """
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except (InstagrapiClientError, ConnectionError, Exception) as e:
+            error_msg = str(e).lower()
+            
+            # Check if it's a rate limit or server error that we should retry
+            if any(keyword in error_msg for keyword in ['500', 'rate limit', 'too many', 'connection', 'timeout', 'server error']):
+                if attempt < max_retries - 1:
+                    # Calculate delay with exponential backoff and jitter
+                    delay = min(base_delay * (2 ** attempt) + random.uniform(0, 1), max_delay)
+                    print(f"Instagram API error (attempt {attempt + 1}/{max_retries}): {e}")
+                    print(f"Retrying in {delay:.2f} seconds...")
+                    time.sleep(delay)
+                    continue
+                else:
+                    print(f"Max retries ({max_retries}) exceeded. Last error: {e}")
+                    raise
+            else:
+                # For non-retryable errors, raise immediately
+                print(f"Non-retryable Instagram API error: {e}")
+                raise
+    
+    raise Exception(f"Function failed after {max_retries} attempts")
+
 def check_messages(cl):
     """
     Retrieves unread direct message threads from an Instagram account,
     extracts video URLs from messages within those threads, and hides the threads.
+    Now includes retry logic with exponential backoff for Instagram API errors.
 
     Args:
         cl: An authenticated Instagram client object.
@@ -152,33 +193,60 @@ def check_messages(cl):
     if not instagram_username or not instagram_password:
         raise ValueError("Username and password must be set in environment variables.")
 
-    try:
+    def _get_threads():
+        """Inner function to get threads with retry logic"""
         print("Checking new messages...")
-        threads = cl.direct_threads(20, "unread")
+        return cl.direct_threads(20, "unread")
+
+    try:
+        # Use retry logic for the Instagram API call
+        threads = retry_with_exponential_backoff(_get_threads, max_retries=3, base_delay=2)
 
         if threads:
+            print(f"Found {len(threads)} unread thread(s)")
             for thread in threads:
                 url_list = []
                 my_chat = thread
                 thread_id = my_chat.id
                 url_list.append(thread_id)
                 user_name = my_chat.users[0].username
+                print(f"Processing thread from user: {user_name}")
+                
                 if hasattr(my_chat, 'messages'):
+                    video_count = 0
                     for item in my_chat.messages:
                         if hasattr(item, 'clip') and hasattr(item.clip, 'video_url'):
                             url_list.append(item.clip.video_url)
+                            video_count += 1
                         else:
                             continue
-                    cl.direct_thread_hide(thread_id)  # Deletes the entire chat
+                    
+                    print(f"Found {video_count} video(s) from {user_name}")
+                    
+                    # Hide thread with retry logic
+                    def _hide_thread():
+                        return cl.direct_thread_hide(thread_id)
+                    
+                    try:
+                        retry_with_exponential_backoff(_hide_thread, max_retries=2, base_delay=1)
+                        print(f"Successfully hid thread from {user_name}")
+                    except Exception as hide_error:
+                        print(f"Warning: Failed to hide thread from {user_name}: {hide_error}")
+                        # Continue processing even if hiding fails
+                    
                     users_Dict[user_name] = url_list
                 else:
-                    print(f'''Message field not found in {user_name}.''')
+                    print(f"Message field not found in thread from {user_name}")
+            
+            print(f"Successfully processed {len(users_Dict)} user(s) with messages")
             return users_Dict
         else:
-            print("No new messages.")
+            print("No new messages found.")
             return users_Dict
+            
     except Exception as e:
         print(f"Error occurred while checking new messages: {e}")
+        print(f"Error type: {type(e).__name__}")
         return {}
 
 def get_session_from_s3(bucket: str, key: str) -> dict | None:
@@ -224,35 +292,48 @@ def put_session_to_s3(settings_dict: dict, bucket: str, key: str):
 def login_with_s3_session() -> Client:
     """
     Handles Instagram login using a session stored in S3.
+    Now includes retry logic for login attempts.
     """
-    cl = Client()
-
-    try:
-        # 1. Attempt to get session dictionary from S3
+    def _attempt_session_login():
+        """Attempt to login using existing session"""
+        cl = Client()
         settings = get_session_from_s3(S3_BUCKET_NAME, SESSION_FILE_KEY)
         if not settings:
             raise ValueError("No session found in S3.")
 
-        # 2. Load the session from the dictionary
         cl.set_settings(settings)
         print("Session settings loaded from S3. Verifying...")
-
-        # 3. Verify the session is still active
+        
+        # Verify the session is still active
         cl.account_info()
         print("✅ Login successful using S3 session.")
-
-    except Exception as e:
-        print(f"Could not use S3 session ({e}). Logging in with credentials.")
-
-        # 4. If S3 session fails, log in normally
+        return cl
+    
+    def _attempt_fresh_login():
+        """Attempt fresh login with credentials"""
+        cl = Client()
         cl.login(instagram_username, instagram_password)
         print("✅ Login successful with credentials.")
-
-        # 5. Get new session dictionary and save it to S3
+        
+        # Get new session dictionary and save it to S3
         new_settings = cl.get_settings()
         put_session_to_s3(new_settings, S3_BUCKET_NAME, SESSION_FILE_KEY)
+        return cl
 
-    return cl
+    try:
+        # 1. Try to login with existing session first
+        return retry_with_exponential_backoff(_attempt_session_login, max_retries=2, base_delay=1)
+        
+    except Exception as session_error:
+        print(f"Could not use S3 session ({session_error}). Logging in with credentials.")
+        
+        try:
+            # 2. If S3 session fails, log in normally with retry logic
+            return retry_with_exponential_backoff(_attempt_fresh_login, max_retries=3, base_delay=2)
+            
+        except Exception as fresh_login_error:
+            print(f"All login attempts failed. Last error: {fresh_login_error}")
+            raise Exception(f"Instagram login failed: {fresh_login_error}")
 
 
 # def loginId():
@@ -358,11 +439,27 @@ def lambda_handler(event, context):
     """
     Main Lambda handler function that gets invoked by AWS.
     """
+    # CORS headers
+    cors_headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+        'Access-Control-Allow-Methods': 'POST,OPTIONS'
+    }
+    
+    # Handle preflight OPTIONS request
+    if event.get('httpMethod') == 'OPTIONS':
+        return {
+            'statusCode': 200,
+            'headers': cors_headers,
+            'body': json.dumps({'message': 'CORS preflight'})
+        }
+    
     try:
         result = main_logic()
         
         return {
             'statusCode': 200,
+            'headers': cors_headers,
             'body': json.dumps({
                 'message': 'InstaBot executed successfully.',
                 'result': result
@@ -373,5 +470,6 @@ def lambda_handler(event, context):
         print(f"An error occurred in the handler: {e}")
         return {
             'statusCode': 500,
+            'headers': cors_headers,
             'body': json.dumps({'error': str(e)})
         }
