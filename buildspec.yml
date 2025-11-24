@@ -44,28 +44,28 @@ phases:
       # Build Lambda Layers
       - echo "Building main_layer..."
       - mkdir -p build-output/main_layer/python
-      - "pip install -r instabot_main/requirements.txt -t build-output/main_layer/python --platform manylinux2014_x86_64 --only-binary=:all:"
+      - pip install -r instabot_main/requirements.txt -t build-output/main_layer/python
       - cd build-output/main_layer
       - zip -r ../main_layer.zip python
       - cd ../..
       
       - echo "Building sqs_layer..."
       - mkdir -p build-output/sqs_layer/python
-      - "pip install -r instabot_sqs_lambda/requirements.txt -t build-output/sqs_layer/python --platform manylinux2014_x86_64 --only-binary=:all:"
+      - pip install -r instabot_sqs_lambda/requirements.txt -t build-output/sqs_layer/python
       - cd build-output/sqs_layer
       - zip -r ../sqs_layer.zip python
       - cd ../..
       
       - echo "Building search_engine_py_layer..."
       - mkdir -p build-output/search_engine_py_layer/python
-      - "pip install -r instabot_search_engine/requirements.txt -t build-output/search_engine_py_layer/python --platform manylinux2014_x86_64 --only-binary=:all:"
+      - pip install -r instabot_search_engine/requirements.txt -t build-output/search_engine_py_layer/python
       - cd build-output/search_engine_py_layer
       - zip -r ../search_engine_py_layer.zip python
       - cd ../..
       
       - echo "Building email_notifier_layer..."
       - mkdir -p build-output/email_notifier_layer/python
-      - "pip install -r instabot_email_notifier/requirements.txt -t build-output/email_notifier_layer/python --platform manylinux2014_x86_64 --only-binary=:all:"
+      - pip install -r instabot_email_notifier/requirements.txt -t build-output/email_notifier_layer/python
       - cd build-output/email_notifier_layer
       - zip -r ../email_notifier_layer.zip python
       - cd ../..
