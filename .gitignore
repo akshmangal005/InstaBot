@@ -64,3 +64,6 @@ instagram_session.json
 # Secrets (never commit)
 secrets.yaml.local
 github-token.txt
+
+
+pipeline-parameters.json
