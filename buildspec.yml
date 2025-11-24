@@ -1,0 +1,100 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      - echo "Installing dependencies..."
+      - pip install --upgrade pip
+      - pip install --upgrade awscli
+      
+  pre_build:
+    commands:
+      - echo "Pre-build phase started on `date`"
+      - echo "Cleaning up previous artifacts..."
+      - rm -rf build-output
+      - mkdir -p build-output
+      
+  build:
+    commands:
+      - echo "Build phase started on `date`"
+      
+      # Package Lambda Functions
+      - echo "Packaging instabot_main Lambda..."
+      - cd instabot_main
+      - zip -r ../build-output/instabot_main.zip lambda_function.py
+      - cd ..
+      
+      - echo "Packaging instabot_sqs_lambda Lambda..."
+      - cd instabot_sqs_lambda
+      - zip -r ../build-output/instabot_sqs_lambda.zip lambda_function.py
+      - cd ..
+      
+      - echo "Packaging instabot_search_engine Lambda..."
+      - cd instabot_search_engine
+      - zip -r ../build-output/instabot_search_engine.zip lambda_function.py
+      - cd ..
+      
+      - echo "Packaging instabot_email_notifier Lambda..."
+      - cd instabot_email_notifier
+      - zip -r ../build-output/instabot_email_notifier.zip lambda_function.py
+      - cd ..
+      
+      # Build Lambda Layers
+      - echo "Building main_layer..."
+      - mkdir -p build-output/main_layer/python
+      - pip install -r instabot_main/requirements.txt -t build-output/main_layer/python --platform manylinux2014_x86_64 --only-binary=:all:
+      - cd build-output/main_layer
+      - zip -r ../main_layer.zip python
+      - cd ../..
+      
+      - echo "Building sqs_layer..."
+      - mkdir -p build-output/sqs_layer/python
+      - pip install -r instabot_sqs_lambda/requirements.txt -t build-output/sqs_layer/python --platform manylinux2014_x86_64 --only-binary=:all:
+      - cd build-output/sqs_layer
+      - zip -r ../sqs_layer.zip python
+      - cd ../..
+      
+      - echo "Building search_engine_py_layer..."
+      - mkdir -p build-output/search_engine_py_layer/python
+      - pip install -r instabot_search_engine/requirements.txt -t build-output/search_engine_py_layer/python --platform manylinux2014_x86_64 --only-binary=:all:
+      - cd build-output/search_engine_py_layer
+      - zip -r ../search_engine_py_layer.zip python
+      - cd ../..
+      
+      - echo "Building email_notifier_layer..."
+      - mkdir -p build-output/email_notifier_layer/python
+      - pip install -r instabot_email_notifier/requirements.txt -t build-output/email_notifier_layer/python --platform manylinux2014_x86_64 --only-binary=:all:
+      - cd build-output/email_notifier_layer
+      - zip -r ../email_notifier_layer.zip python
+      - cd ../..
+      
+      - echo "Listing build artifacts..."
+      - ls -lh build-output/
+      
+  post_build:
+    commands:
+      - echo "Post-build phase started on `date`"
+      - echo "Uploading artifacts to S3..."
+      - aws s3 cp build-output/instabot_main.zip s3://${S3_BUCKET}/instabot_main.zip
+      - aws s3 cp build-output/instabot_sqs_lambda.zip s3://${S3_BUCKET}/instabot_sqs_lambda.zip
+      - aws s3 cp build-output/instabot_search_engine.zip s3://${S3_BUCKET}/instabot_search_engine.zip
+      - aws s3 cp build-output/instabot_email_notifier.zip s3://${S3_BUCKET}/instabot_email_notifier.zip
+      - aws s3 cp build-output/main_layer.zip s3://${S3_BUCKET}/main_layer.zip
+      - aws s3 cp build-output/sqs_layer.zip s3://${S3_BUCKET}/sqs_layer.zip
+      - aws s3 cp build-output/search_engine_py_layer.zip s3://${S3_BUCKET}/search_engine_py_layer.zip
+      - aws s3 cp build-output/email_notifier_layer.zip s3://${S3_BUCKET}/email_notifier_layer.zip
+      - echo "Build completed successfully on `date`"
+
+artifacts:
+  files:
+    - cft/Application-stack.yaml
+    - cft/Deployment-bucket.yaml
+    - cft/secrets.yaml
+  name: InstaBot-CloudFormation-Templates
+  
+cache:
+  paths:
+    - '/root/.cache/pip/**/*'
+

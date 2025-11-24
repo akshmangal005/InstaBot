@@ -30,6 +30,60 @@ A serverless AWS-based application that automatically processes Instagram direct
 - AWS CLI configured with appropriate permissions
 - Docker installed (for Lambda layer creation)
 - Python 3.9+ for local development
+- GitHub account with repository
+- GitHub Personal Access Token (for CI/CD)
+
+## 🔄 CI/CD Pipeline (Automated Deployment)
+
+This project includes a complete CI/CD pipeline using AWS CodePipeline. **This is the recommended deployment method.**
+
+### Quick CI/CD Setup
+
+1. **Review the Quick Start Guide**:
+   ```bash
+   # See QUICK-START.md for a 3-step setup process
+   ```
+
+2. **Deploy the CI/CD Pipeline**:
+   
+   **PowerShell (Windows):**
+   ```powershell
+   .\deploy-cicd-pipeline.ps1
+   ```
+   
+   **Bash (Linux/Mac):**
+   ```bash
+   chmod +x deploy-cicd-pipeline.sh
+   ./deploy-cicd-pipeline.sh
+   ```
+
+3. **Push Code to Trigger Automatic Deployment**:
+   ```bash
+   git add .
+   git commit -m "Deploy via CI/CD"
+   git push origin main
+   ```
+
+### What the CI/CD Pipeline Does
+
+- ✅ **Automatically builds** Lambda functions and layers on every push
+- ✅ **Packages dependencies** with correct architecture for Lambda
+- ✅ **Uploads artifacts** to S3
+- ✅ **Deploys infrastructure** via CloudFormation
+- ✅ **Sends notifications** on success/failure
+- ✅ **Zero manual steps** after initial setup
+
+### CI/CD Documentation
+
+- 📘 **Detailed Setup**: See [`CICD-SETUP.md`](CICD-SETUP.md) for complete documentation
+- 🏗️ **Build Configuration**: See [`buildspec.yml`](buildspec.yml) for build process
+- ☁️ **Pipeline Infrastructure**: See [`cft/pipeline.yaml`](cft/pipeline.yaml) for pipeline template
+
+---
+
+## 📦 Manual Deployment (Alternative)
+
+If you prefer manual deployment instead of CI/CD:
 
 ### 1. Deploy Infrastructure
 
@@ -55,9 +109,22 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_IAM
 ```
 
-### 2. Package and Deploy Lambda Functions
+### 2. Package and Deploy Lambda Functions Manually
 
-Follow the packaging instructions below, then upload the ZIP files to your S3 deployment bucket and update the Lambda functions.
+**Option A: Use the manual build script**:
+
+**PowerShell:**
+```powershell
+.\scripts\manual-build.ps1 -S3Bucket your-bucket-name
+```
+
+**Bash:**
+```bash
+chmod +x scripts/manual-build.sh
+./scripts/manual-build.sh your-bucket-name
+```
+
+**Option B: Follow manual packaging instructions below**, then upload the ZIP files to your S3 deployment bucket and update the Lambda functions.
 
 ## 📦 Lambda Function Packaging
 
