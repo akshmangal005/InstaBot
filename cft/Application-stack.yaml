@@ -52,6 +52,13 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub "${AWS::StackName}-SearchEngineDLQ"
+      MessageRetentionPeriod: 1209600  # 14 days
+
+  LambdaFailureDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-LambdaFailureDLQ"
+      MessageRetentionPeriod: 1209600  # 14 days
 
   MainLambdaRole:
     Type: AWS::IAM::Role
@@ -81,6 +88,9 @@ Resources:
                 Action: secretsmanager:GetSecretValue
                 Resource:
                   Fn::ImportValue: !Sub "${SecretsStackName}-SecretARN"
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt LambdaFailureDLQ.Arn
 
   EmailNotifierRole:
     Type: AWS::IAM::Role
@@ -108,6 +118,9 @@ Resources:
                 Action: secretsmanager:GetSecretValue
                 Resource:
                   Fn::ImportValue: !Sub "${SecretsStackName}-SecretARN"
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt LambdaFailureDLQ.Arn
         - PolicyName: S3AccessPolicy
           PolicyDocument:
             Version: '2012-10-17'
@@ -189,6 +202,9 @@ Resources:
                 Action: secretsmanager:GetSecretValue
                 Resource:
                   Fn::ImportValue: !Sub "${SecretsStackName}-SecretARN"
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt LambdaFailureDLQ.Arn
         - PolicyName: S3AccessPolicy
           PolicyDocument:
             Version: '2012-10-17'
@@ -277,6 +293,8 @@ Resources:
       Runtime: python3.12
       Role: !GetAtt EmailNotifierRole.Arn
       Timeout: 900
+      DeadLetterConfig:
+        TargetArn: !GetAtt LambdaFailureDLQ.Arn
       Code:
         S3Bucket:
           Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
@@ -361,6 +379,8 @@ Resources:
       Runtime: python3.12
       Role: !GetAtt SQSLambdaRole.Arn
       Timeout: 900
+      DeadLetterConfig:
+        TargetArn: !GetAtt LambdaFailureDLQ.Arn
       Code:
         S3Bucket:
           Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
@@ -395,6 +415,8 @@ Resources:
       Runtime: python3.12
       Role: !GetAtt MainLambdaRole.Arn
       Timeout: 900
+      DeadLetterConfig:
+        TargetArn: !GetAtt LambdaFailureDLQ.Arn
       Code:
         S3Bucket:
           Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
@@ -429,6 +451,39 @@ Resources:
       Principal: "events.amazonaws.com"
       SourceArn: !GetAtt DailyTriggerRule.Arn
 
+  # API Gateway Lambda Permissions
+  AllowApiGatewayToInvokeMainLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt InstabotMainLambda.Arn
+      Action: "lambda:InvokeFunction"
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${InstaBotApiGateway}/*/*/*"
+
+  AllowApiGatewayToInvokeSQSLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt InstabotSQSLambda.Arn
+      Action: "lambda:InvokeFunction"
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${InstaBotApiGateway}/*/*/*"
+
+  AllowApiGatewayToInvokeSearchEngineLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt InstabotSearchEngineLambda.Arn
+      Action: "lambda:InvokeFunction"
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${InstaBotApiGateway}/*/*/*"
+
+  AllowApiGatewayToInvokeEmailNotifierLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt InstabotEmailNotifierLambda.Arn
+      Action: "lambda:InvokeFunction"
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${InstaBotApiGateway}/*/*/*"
+
   InstabotSearchEngineEventSourceMapping:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
@@ -436,6 +491,8 @@ Resources:
       FunctionName: !GetAtt InstabotSearchEngineLambda.Arn
       Enabled: true
       BatchSize: 10
+      FunctionResponseTypes:
+        - ReportBatchItemFailures
 
   # ---------------------------------------------------------------------------
   # API GATEWAY
@@ -528,6 +585,43 @@ Resources:
       - LoginApiMethod
       - MailApiMethod
 
+  # ---------------------------------------------------------------------------
+  # CLOUDWATCH ALARMS FOR DLQ MONITORING
+  # ---------------------------------------------------------------------------
+  SearchEngineDLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-SearchEngine-DLQ-Messages"
+      AlarmDescription: Alert when messages are in SearchEngine DLQ
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt SearchEngineDLQ.QueueName
+      TreatMissingData: notBreaching
+
+  LambdaFailureDLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-Lambda-DLQ-Messages"
+      AlarmDescription: Alert when Lambda failures are in DLQ
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt LambdaFailureDLQ.QueueName
+      TreatMissingData: notBreaching
+
 Outputs:
   BaseApiUrl:
     Description: The base URL of the API Gateway
@@ -548,3 +642,9 @@ Outputs:
     Description: Name of the S3 bucket for Lambda code
     Value:
       Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+  SearchEngineDLQUrl:
+    Description: URL of the SearchEngine Dead Letter Queue
+    Value: !Ref SearchEngineDLQ
+  LambdaFailureDLQUrl:
+    Description: URL of the Lambda Failure Dead Letter Queue
+    Value: !Ref LambdaFailureDLQ

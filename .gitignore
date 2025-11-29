@@ -1,5 +1,69 @@
-.venv/
-.env
-__pycache__
-python
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# AWS
+.aws/
+*.pem
+
+# Build artifacts
+build-output/
 *.zip
+python/
+
+# Local environment files
+.env
+.env.local
+*.local
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Session files
+session.json
+instagram_session.json
+
+# Secrets (never commit)
+secrets.yaml.local
+github-token.txt
+
+
+pipeline-parameters.json

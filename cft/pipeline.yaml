@@ -1,0 +1,525 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  CI/CD Pipeline for InstaBot Application using CodePipeline, CodeBuild, and CodeDeploy.
+  This template creates a complete automated deployment pipeline from source to production.
+
+Parameters:
+  GitHubOwner:
+    Type: String
+    Description: GitHub repository owner (username or organization)
+    Default: your-github-username
+    
+  GitHubRepo:
+    Type: String
+    Description: GitHub repository name
+    Default: InstaBot
+    
+  GitHubBranch:
+    Type: String
+    Description: GitHub branch to track
+    Default: main
+    
+  GitHubToken:
+    Type: String
+    Description: GitHub Personal Access Token (stored in AWS Secrets Manager)
+    NoEcho: true
+    
+  S3BucketStackName:
+    Type: String
+    Description: The name of the stack that creates the S3 bucket for deployment
+    Default: InstaBot-Deployment-Bucket
+    
+  SecretsStackName:
+    Type: String
+    Description: The name of the stack that creates the InstaBot secrets
+    Default: InstaBot-Secrets
+    
+  ApplicationStackName:
+    Type: String
+    Description: The name of the application stack to deploy
+    Default: InstaBot-Application
+    
+  BuildComputeType:
+    Type: String
+    Description: CodeBuild compute type
+    Default: BUILD_GENERAL1_SMALL
+    AllowedValues:
+      - BUILD_GENERAL1_SMALL
+      - BUILD_GENERAL1_MEDIUM
+      - BUILD_GENERAL1_LARGE
+      
+  NotificationEmail:
+    Type: String
+    Description: Email address for pipeline notifications
+    Default: your-email@example.com
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # SNS TOPIC FOR NOTIFICATIONS
+  # ---------------------------------------------------------------------------
+  PipelineNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${AWS::StackName}-PipelineNotifications"
+      DisplayName: InstaBot Pipeline Notifications
+      Subscription:
+        - Endpoint: !Ref NotificationEmail
+          Protocol: email
+
+  # ---------------------------------------------------------------------------
+  # IAM ROLES
+  # ---------------------------------------------------------------------------
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-CodePipelineRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodePipelinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                  - s3:GetBucketLocation
+                  - s3:ListBucket
+                Resource:
+                  - !Sub
+                    - 'arn:aws:s3:::${BucketName}'
+                    - BucketName:
+                        Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+                  - !Sub
+                    - 'arn:aws:s3:::${BucketName}/*'
+                    - BucketName:
+                        Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+                  - !Sub 'arn:aws:s3:::${PipelineArtifactBucket}'
+                  - !Sub 'arn:aws:s3:::${PipelineArtifactBucket}/*'
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: !GetAtt CodeBuildProject.Arn
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:DeleteStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:UpdateStack
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:SetStackPolicy
+                  - cloudformation:ValidateTemplate
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: !GetAtt CloudFormationServiceRole.Arn
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref PipelineNotificationTopic
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-CodeBuildRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::${PipelineArtifactBucket}/*'
+                  - !Sub
+                    - 'arn:aws:s3:::${BucketName}/*'
+                    - BucketName:
+                        Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::${PipelineArtifactBucket}'
+                  - !Sub
+                    - 'arn:aws:s3:::${BucketName}'
+                    - BucketName:
+                        Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+
+  CloudFormationServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-CloudFormationRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+
+  # ---------------------------------------------------------------------------
+  # S3 BUCKET FOR PIPELINE ARTIFACTS
+  # ---------------------------------------------------------------------------
+  PipelineArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-artifacts-${AWS::AccountId}"
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldArtifacts
+            Status: Enabled
+            ExpirationInDays: 30
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # ---------------------------------------------------------------------------
+  # CODEBUILD PROJECT
+  # ---------------------------------------------------------------------------
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "${AWS::StackName}-Build"
+      Description: Build project for InstaBot application
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: !Ref BuildComputeType
+        Image: aws/codebuild/standard:7.0
+        EnvironmentVariables:
+          - Name: S3_BUCKET
+            Value:
+              Fn::ImportValue: !Sub "${S3BucketStackName}-LambdaCodeBucketName"
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: AWS_ACCOUNT_ID
+            Value: !Ref AWS::AccountId
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec.yml
+      TimeoutInMinutes: 30
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Sub "/aws/codebuild/${AWS::StackName}"
+
+  # ---------------------------------------------------------------------------
+  # CODEPIPELINE
+  # ---------------------------------------------------------------------------
+  InstaBoTPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub "${AWS::StackName}-Pipeline"
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref PipelineArtifactBucket
+      Stages:
+        # SOURCE STAGE
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Provider: GitHub
+                Version: '1'
+              Configuration:
+                Owner: !Ref GitHubOwner
+                Repo: !Ref GitHubRepo
+                Branch: !Ref GitHubBranch
+                OAuthToken: !Ref GitHubToken
+                PollForSourceChanges: false
+              OutputArtifacts:
+                - Name: SourceOutput
+        
+        # UPDATE PIPELINE STAGE (Self-Updating)
+        - Name: Update-Pipeline
+          Actions:
+            - Name: CreatePipelineChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_REPLACE
+                StackName: !Ref AWS::StackName
+                ChangeSetName: !Sub "${AWS::StackName}-Pipeline-ChangeSet"
+                TemplatePath: SourceOutput::cft/pipeline.yaml
+                Capabilities: CAPABILITY_NAMED_IAM
+                RoleArn: !GetAtt CloudFormationServiceRole.Arn
+                ParameterOverrides: !Sub |
+                  {
+                    "GitHubOwner": "${GitHubOwner}",
+                    "GitHubRepo": "${GitHubRepo}",
+                    "GitHubBranch": "${GitHubBranch}",
+                    "GitHubToken": "${GitHubToken}",
+                    "S3BucketStackName": "${S3BucketStackName}",
+                    "SecretsStackName": "${SecretsStackName}",
+                    "ApplicationStackName": "${ApplicationStackName}",
+                    "BuildComputeType": "${BuildComputeType}",
+                    "NotificationEmail": "${NotificationEmail}"
+                  }
+              InputArtifacts:
+                - Name: SourceOutput
+              RunOrder: 1
+            
+            - Name: ExecutePipelineChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_EXECUTE
+                StackName: !Ref AWS::StackName
+                ChangeSetName: !Sub "${AWS::StackName}-Pipeline-ChangeSet"
+              RunOrder: 2
+        
+        # BUILD STAGE
+        - Name: Build
+          Actions:
+            - Name: BuildAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+        
+        # DEPLOY TO TEST STAGE
+        - Name: Deploy-Test
+          Actions:
+            - Name: CreateTestChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_REPLACE
+                StackName: !Sub "${ApplicationStackName}-test"
+                ChangeSetName: !Sub "${ApplicationStackName}-test-ChangeSet"
+                TemplatePath: BuildOutput::cft/Application-stack.yaml
+                Capabilities: CAPABILITY_NAMED_IAM
+                RoleArn: !GetAtt CloudFormationServiceRole.Arn
+                ParameterOverrides: !Sub |
+                  {
+                    "SecretsStackName": "${SecretsStackName}",
+                    "S3BucketStackName": "${S3BucketStackName}"
+                  }
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+            
+            - Name: ExecuteTestChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_EXECUTE
+                StackName: !Sub "${ApplicationStackName}-test"
+                ChangeSetName: !Sub "${ApplicationStackName}-test-ChangeSet"
+              RunOrder: 2
+        
+        # MANUAL APPROVAL STAGE
+        - Name: Manual-Approval
+          Actions:
+            - Name: ApproveProductionDeployment
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Provider: Manual
+                Version: '1'
+              Configuration:
+                NotificationArn: !Ref PipelineNotificationTopic
+                CustomData: !Sub |
+                  Test deployment completed successfully.
+                  
+                  Test Stack: ${ApplicationStackName}-test
+                  
+                  Please review the test environment and approve to deploy to production.
+                  
+                  Production Stack: ${ApplicationStackName}
+        
+        # DEPLOY TO PRODUCTION STAGE
+        - Name: Deploy-Production
+          Actions:
+            - Name: CreateProductionChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_REPLACE
+                StackName: !Ref ApplicationStackName
+                ChangeSetName: !Sub "${ApplicationStackName}-ChangeSet"
+                TemplatePath: BuildOutput::cft/Application-stack.yaml
+                Capabilities: CAPABILITY_NAMED_IAM
+                RoleArn: !GetAtt CloudFormationServiceRole.Arn
+                ParameterOverrides: !Sub |
+                  {
+                    "SecretsStackName": "${SecretsStackName}",
+                    "S3BucketStackName": "${S3BucketStackName}"
+                  }
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+            
+            - Name: ExecuteProductionChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_EXECUTE
+                StackName: !Ref ApplicationStackName
+                ChangeSetName: !Sub "${ApplicationStackName}-ChangeSet"
+              RunOrder: 2
+
+  # ---------------------------------------------------------------------------
+  # GITHUB WEBHOOK
+  # ---------------------------------------------------------------------------
+  GithubWebhook:
+    Type: AWS::CodePipeline::Webhook
+    Properties:
+      Authentication: GITHUB_HMAC
+      AuthenticationConfiguration:
+        SecretToken: !Ref GitHubToken
+      Filters:
+        - JsonPath: $.ref
+          MatchEquals: refs/heads/{Branch}
+      TargetPipeline: !Ref InstaBoTPipeline
+      TargetAction: SourceAction
+      TargetPipelineVersion: !GetAtt InstaBoTPipeline.Version
+      RegisterWithThirdParty: true
+
+  # ---------------------------------------------------------------------------
+  # EVENTBRIDGE RULES FOR NOTIFICATIONS
+  # ---------------------------------------------------------------------------
+  PipelineEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${AWS::StackName}-PipelineEvents"
+      Description: Trigger notifications for pipeline state changes
+      EventPattern:
+        source:
+          - aws.codepipeline
+        detail-type:
+          - CodePipeline Pipeline Execution State Change
+        detail:
+          state:
+            - FAILED
+            - SUCCEEDED
+          pipeline:
+            - !Ref InstaBoTPipeline
+      State: ENABLED
+      Targets:
+        - Arn: !Ref PipelineNotificationTopic
+          Id: PipelineNotificationTarget
+          InputTransformer:
+            InputPathsMap:
+              pipeline: $.detail.pipeline
+              state: $.detail.state
+              execution: $.detail.execution-id
+            InputTemplate: |
+              "Pipeline <pipeline> has <state>. Execution ID: <execution>"
+
+  # Allow EventBridge to publish to SNS
+  SNSTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref PipelineNotificationTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref PipelineNotificationTopic
+
+Outputs:
+  PipelineName:
+    Description: Name of the CodePipeline
+    Value: !Ref InstaBoTPipeline
+    Export:
+      Name: !Sub "${AWS::StackName}-PipelineName"
+      
+  PipelineUrl:
+    Description: URL to view the pipeline in AWS Console
+    Value: !Sub "https://console.aws.amazon.com/codesuite/codepipeline/pipelines/${InstaBoTPipeline}/view?region=${AWS::Region}"
+    
+  CodeBuildProjectName:
+    Description: Name of the CodeBuild project
+    Value: !Ref CodeBuildProject
+    Export:
+      Name: !Sub "${AWS::StackName}-CodeBuildProject"
+      
+  ArtifactBucket:
+    Description: S3 bucket for pipeline artifacts
+    Value: !Ref PipelineArtifactBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-ArtifactBucket"
+      
+  NotificationTopicArn:
+    Description: ARN of the SNS topic for notifications
+    Value: !Ref PipelineNotificationTopic
+    Export:
+      Name: !Sub "${AWS::StackName}-NotificationTopic"
+  
+  TestStackName:
+    Description: Name of the test stack
+    Value: !Sub "${ApplicationStackName}-test"
+    
+  ProductionStackName:
+    Description: Name of the production stack
+    Value: !Ref ApplicationStackName
+
