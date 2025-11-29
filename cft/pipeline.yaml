@@ -340,8 +340,8 @@ Resources:
                 Version: '1'
               Configuration:
                 ActionMode: CHANGE_SET_REPLACE
-                StackName: !Sub "${ApplicationStackName}-Test"
-                ChangeSetName: !Sub "${ApplicationStackName}-Test-ChangeSet"
+                StackName: !Sub "${ApplicationStackName}-test"
+                ChangeSetName: !Sub "${ApplicationStackName}-test-ChangeSet"
                 TemplatePath: BuildOutput::cft/Application-stack.yaml
                 Capabilities: CAPABILITY_NAMED_IAM
                 RoleArn: !GetAtt CloudFormationServiceRole.Arn
@@ -362,8 +362,8 @@ Resources:
                 Version: '1'
               Configuration:
                 ActionMode: CHANGE_SET_EXECUTE
-                StackName: !Sub "${ApplicationStackName}-Test"
-                ChangeSetName: !Sub "${ApplicationStackName}-Test-ChangeSet"
+                StackName: !Sub "${ApplicationStackName}-test"
+                ChangeSetName: !Sub "${ApplicationStackName}-test-ChangeSet"
               RunOrder: 2
         
         # MANUAL APPROVAL STAGE
@@ -380,7 +380,7 @@ Resources:
                 CustomData: !Sub |
                   Test deployment completed successfully.
                   
-                  Test Stack: ${ApplicationStackName}-Test
+                  Test Stack: ${ApplicationStackName}-test
                   
                   Please review the test environment and approve to deploy to production.
                   
@@ -517,7 +517,7 @@ Outputs:
   
   TestStackName:
     Description: Name of the test stack
-    Value: !Sub "${ApplicationStackName}-Test"
+    Value: !Sub "${ApplicationStackName}-test"
     
   ProductionStackName:
     Description: Name of the production stack
