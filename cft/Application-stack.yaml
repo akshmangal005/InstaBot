@@ -460,7 +460,6 @@ Resources:
       BatchSize: 10
       FunctionResponseTypes:
         - ReportBatchItemFailures
-      MaximumRetryAttempts: 2
 
   # ---------------------------------------------------------------------------
   # API GATEWAY
