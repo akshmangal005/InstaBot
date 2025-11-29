@@ -10,7 +10,7 @@ echo "InstaBot CI/CD Pipeline Deployment Script"
 echo "=================================================="
 
 # Configuration
-STACK_NAME="InstaBot-CICD-Pipeline"
+STACK_NAME="instabot-cicd-pipeline-prd"
 TEMPLATE_FILE="cft/pipeline.yaml"
 REGION="us-west-2"
 
@@ -22,12 +22,12 @@ read -p "Enter GitHub Branch [main]: " GITHUB_BRANCH
 GITHUB_BRANCH=${GITHUB_BRANCH:-main}
 read -sp "Enter GitHub Personal Access Token: " GITHUB_TOKEN
 echo ""
-read -p "Enter S3 Bucket Stack Name [InstaBot-Deployment-Bucket]: " S3_STACK
+read -p "Enter S3 Bucket Stack Name [instabot-storage-prd]: " S3_STACK
 S3_STACK=${S3_STACK:-InstaBot-Deployment-Bucket}
-read -p "Enter Secrets Stack Name [InstaBot-Secrets]: " SECRETS_STACK
-SECRETS_STACK=${SECRETS_STACK:-InstaBot-Secrets}
-read -p "Enter Application Stack Name [InstaBot-Application]: " APP_STACK
-APP_STACK=${APP_STACK:-InstaBot-Application}
+read -p "Enter Secrets Stack Name [instabot-secrets]: " SECRETS_STACK
+SECRETS_STACK=${SECRETS_STACK:-instabot-secrets}
+read -p "Enter Application Stack Name [instabot-app]: " APP_STACK
+APP_STACK=${APP_STACK:-instabot-app}
 read -p "Enter Notification Email: " NOTIFICATION_EMAIL
 
 echo ""

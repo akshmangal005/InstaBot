@@ -193,7 +193,7 @@ Resources:
   PipelineArtifactBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub "instabot-cicd-pipeline-artifacts-${AWS::AccountId}"
+      BucketName: !Sub "${AWS::StackName}-artifacts-${AWS::AccountId}"
       VersioningConfiguration:
         Status: Enabled
       LifecycleConfiguration:
