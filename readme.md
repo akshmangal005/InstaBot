@@ -66,12 +66,15 @@ This project includes a complete CI/CD pipeline using AWS CodePipeline. **This i
 
 ### What the CI/CD Pipeline Does
 
+- ✅ **Self-updating** - Updates itself when pipeline.yaml changes
 - ✅ **Automatically builds** Lambda functions and layers on every push
 - ✅ **Packages dependencies** with correct architecture for Lambda
 - ✅ **Uploads artifacts** to S3
-- ✅ **Deploys infrastructure** via CloudFormation
-- ✅ **Sends notifications** on success/failure
-- ✅ **Zero manual steps** after initial setup
+- ✅ **Deploys to TEST environment** automatically
+- ✅ **Requires manual approval** before production
+- ✅ **Deploys to PRODUCTION** after approval
+- ✅ **Sends notifications** on success/failure and for approvals
+- ✅ **Safe deployment** with test-then-production flow
 
 ### CI/CD Documentation
 

@@ -269,6 +269,50 @@ Resources:
               OutputArtifacts:
                 - Name: SourceOutput
         
+        # UPDATE PIPELINE STAGE (Self-Updating)
+        - Name: Update-Pipeline
+          Actions:
+            - Name: CreatePipelineChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_REPLACE
+                StackName: !Ref AWS::StackName
+                ChangeSetName: !Sub "${AWS::StackName}-Pipeline-ChangeSet"
+                TemplatePath: SourceOutput::cft/pipeline.yaml
+                Capabilities: CAPABILITY_NAMED_IAM
+                RoleArn: !GetAtt CloudFormationServiceRole.Arn
+                ParameterOverrides: !Sub |
+                  {
+                    "GitHubOwner": "${GitHubOwner}",
+                    "GitHubRepo": "${GitHubRepo}",
+                    "GitHubBranch": "${GitHubBranch}",
+                    "GitHubToken": "${GitHubToken}",
+                    "S3BucketStackName": "${S3BucketStackName}",
+                    "SecretsStackName": "${SecretsStackName}",
+                    "ApplicationStackName": "${ApplicationStackName}",
+                    "BuildComputeType": "${BuildComputeType}",
+                    "NotificationEmail": "${NotificationEmail}"
+                  }
+              InputArtifacts:
+                - Name: SourceOutput
+              RunOrder: 1
+            
+            - Name: ExecutePipelineChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_EXECUTE
+                StackName: !Ref AWS::StackName
+                ChangeSetName: !Sub "${AWS::StackName}-Pipeline-ChangeSet"
+              RunOrder: 2
+        
         # BUILD STAGE
         - Name: Build
           Actions:
@@ -285,10 +329,67 @@ Resources:
               OutputArtifacts:
                 - Name: BuildOutput
         
-        # DEPLOY STAGE
-        - Name: Deploy
+        # DEPLOY TO TEST STAGE
+        - Name: Deploy-Test
           Actions:
-            - Name: CreateChangeSet
+            - Name: CreateTestChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_REPLACE
+                StackName: !Sub "${ApplicationStackName}-Test"
+                ChangeSetName: !Sub "${ApplicationStackName}-Test-ChangeSet"
+                TemplatePath: BuildOutput::cft/Application-stack.yaml
+                Capabilities: CAPABILITY_NAMED_IAM
+                RoleArn: !GetAtt CloudFormationServiceRole.Arn
+                ParameterOverrides: !Sub |
+                  {
+                    "SecretsStackName": "${SecretsStackName}",
+                    "S3BucketStackName": "${S3BucketStackName}"
+                  }
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+            
+            - Name: ExecuteTestChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_EXECUTE
+                StackName: !Sub "${ApplicationStackName}-Test"
+                ChangeSetName: !Sub "${ApplicationStackName}-Test-ChangeSet"
+              RunOrder: 2
+        
+        # MANUAL APPROVAL STAGE
+        - Name: Manual-Approval
+          Actions:
+            - Name: ApproveProductionDeployment
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Provider: Manual
+                Version: '1'
+              Configuration:
+                NotificationArn: !Ref PipelineNotificationTopic
+                CustomData: !Sub |
+                  Test deployment completed successfully.
+                  
+                  Test Stack: ${ApplicationStackName}-Test
+                  
+                  Please review the test environment and approve to deploy to production.
+                  
+                  Production Stack: ${ApplicationStackName}
+        
+        # DEPLOY TO PRODUCTION STAGE
+        - Name: Deploy-Production
+          Actions:
+            - Name: CreateProductionChangeSet
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
@@ -310,7 +411,7 @@ Resources:
                 - Name: BuildOutput
               RunOrder: 1
             
-            - Name: ExecuteChangeSet
+            - Name: ExecuteProductionChangeSet
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
@@ -413,4 +514,12 @@ Outputs:
     Value: !Ref PipelineNotificationTopic
     Export:
       Name: !Sub "${AWS::StackName}-NotificationTopic"
+  
+  TestStackName:
+    Description: Name of the test stack
+    Value: !Sub "${ApplicationStackName}-Test"
+    
+  ProductionStackName:
+    Description: Name of the production stack
+    Value: !Ref ApplicationStackName
 

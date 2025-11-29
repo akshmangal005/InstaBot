@@ -2,6 +2,33 @@
 
 This guide will help you set up a complete CI/CD pipeline for the InstaBot application using AWS CodePipeline, CodeBuild, and CloudFormation.
 
+## Pipeline Flow
+
+The pipeline is **self-updating** and includes **Test → Approval → Production** stages:
+
+```
+Source → Update-Pipeline → Build → Deploy-Test → Manual-Approval → Deploy-Production
+```
+
+1. **Source**: Pulls code from GitHub
+2. **Update-Pipeline**: Updates the pipeline itself if `pipeline.yaml` changed (self-updating)
+3. **Build**: Packages Lambda functions and layers
+4. **Deploy-Test**: Deploys to test stack automatically
+5. **Manual-Approval**: Waits for your approval (email notification)
+6. **Deploy-Production**: Deploys to production stack after approval
+
+### Self-Updating Pipeline
+
+The pipeline can update itself! If you modify `cft/pipeline.yaml`:
+
+1. Push the changes to GitHub
+2. Pipeline detects changes
+3. **Update-Pipeline** stage updates the pipeline stack first
+4. Pipeline **restarts automatically** with the new configuration
+5. Continues with Build → Deploy stages
+
+This means you can add new stages, change configurations, or modify the pipeline structure without manual intervention!
+
 ## Prerequisites
 
 Before setting up the CI/CD pipeline, ensure you have:
@@ -49,7 +76,7 @@ The CI/CD pipeline consists of:
 
 ## Setup Instructions
 
-### Option 1: Using PowerShell Script (Recommended for Windows)
+### Option 1: Using PowerShell Script (Recommended)
 
 1. Open PowerShell in the InstaBot directory
 
@@ -66,21 +93,7 @@ The CI/CD pipeline consists of:
    - Stack names (use defaults or customize)
    - Notification email
 
-### Option 2: Using Bash Script (Linux/Mac)
-
-1. Make the script executable:
-   ```bash
-   chmod +x deploy-cicd-pipeline.sh
-   ```
-
-2. Run the deployment script:
-   ```bash
-   ./deploy-cicd-pipeline.sh
-   ```
-
-3. Follow the prompts to enter configuration details
-
-### Option 3: Manual Deployment via AWS CLI
+### Option 2: Manual Deployment via AWS CLI
 
 ```bash
 aws cloudformation create-stack \
