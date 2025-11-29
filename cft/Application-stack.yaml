@@ -458,7 +458,7 @@ Resources:
       FunctionName: !GetAtt InstabotMainLambda.Arn
       Action: "lambda:InvokeFunction"
       Principal: "apigateway.amazonaws.com"
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${InstaBotApiGateway}/*/*/*"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${InstaBotApiGateway}/*"
 
   AllowApiGatewayToInvokeSQSLambda:
     Type: AWS::Lambda::Permission
@@ -466,7 +466,7 @@ Resources:
       FunctionName: !GetAtt InstabotSQSLambda.Arn
       Action: "lambda:InvokeFunction"
       Principal: "apigateway.amazonaws.com"
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${InstaBotApiGateway}/*/*/*"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${InstaBotApiGateway}/*"
 
   AllowApiGatewayToInvokeSearchEngineLambda:
     Type: AWS::Lambda::Permission
@@ -474,7 +474,7 @@ Resources:
       FunctionName: !GetAtt InstabotSearchEngineLambda.Arn
       Action: "lambda:InvokeFunction"
       Principal: "apigateway.amazonaws.com"
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${InstaBotApiGateway}/*/*/*"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${InstaBotApiGateway}/*"
 
   AllowApiGatewayToInvokeEmailNotifierLambda:
     Type: AWS::Lambda::Permission
@@ -482,7 +482,7 @@ Resources:
       FunctionName: !GetAtt InstabotEmailNotifierLambda.Arn
       Action: "lambda:InvokeFunction"
       Principal: "apigateway.amazonaws.com"
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${InstaBotApiGateway}/*/*/*"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${InstaBotApiGateway}/*"
 
   InstabotSearchEngineEventSourceMapping:
     Type: AWS::Lambda::EventSourceMapping
