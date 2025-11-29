@@ -1,5 +1,2 @@
 instagrapi==2.2.1
 pillow==11.1.0
-openpyxl
-pandas
-psycopg2-binary
